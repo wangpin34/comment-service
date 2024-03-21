@@ -6,8 +6,8 @@ from functools import wraps
 import jwt
 from bson import ObjectId
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
-from mongoengine import connect
+from flask import Flask, g, jsonify, request
+from mongoengine import DoesNotExist, connect
 
 from flaskr.db import Comment, Post, User
 from flaskr.utils.jwt import gen_jwt, verify_jwt
@@ -29,7 +29,10 @@ def token_required(f):
             if len(parts) == 2 and parts[0].lower() == 'bearer':
                _, jwt_token = auth_header.split(' ')
                try:
-                  verify_jwt(jwt_token, secret=JWT_SECRET)
+                  payload = verify_jwt(jwt_token, secret=JWT_SECRET)
+                  g.user_id = payload.get('user_id')
+                  g.username = payload.get('username')
+                  g.email = payload.get('email')
                except jwt.ExpiredSignatureError:
                   return jsonify({'message': 'Token expired'}), 401
                except jwt.InvalidTokenError:
@@ -65,7 +68,7 @@ def sign_in():
    return {
       'username': user.username,
       'email': user.email,
-      'token': gen_jwt(str(user.id), secret=JWT_SECRET)
+      'token': gen_jwt(user, secret=JWT_SECRET)
    }, 200
 
 def transform_post_json(obj):
@@ -88,7 +91,7 @@ def list_posts():
 @token_required
 def create_post():
    payload = request.get_json()
-   post = Post(content=payload.get('content'), author=payload.get('author'), createdAt=datetime.now)
+   post = Post(content=payload.get('content'), author=g.email, createdAt=datetime.now)
    post.save()
    return transform_post_json(post), 201
 
@@ -103,7 +106,7 @@ def get_post(id):
 @app.put('/posts/<id>')
 @token_required
 def update_post(id):
-   post = Post.objects.get(id=ObjectId(id))
+   post = Post.objects.get(id=ObjectId(id), author=g.email)
    if not post:
       return 'post not found', 404
    payload = request.get_json()
@@ -131,7 +134,6 @@ def transform_comment_json(obj):
 @token_required
 def list_comments(): 
    comments = Comment.objects.all()
-   print(f'{len(comments)} comments found')
    return [transform_comment_json(comment) for comment in comments]
 
 @app.get('/comments/<id>')
@@ -139,14 +141,14 @@ def list_comments():
 def get_comment(id):
    comment = Comment.objects.get(id=ObjectId(id))
    if not comment:
-      return 'comment not found', 404
+      return jsonify({'message': 'Comment not found'}), 404
    return transform_comment_json(comment), 200
 
 @app.post('/comments')
 @token_required
 def create_comment():
    payload = request.get_json()
-   comment = Comment(content=payload.get('content'), author=payload.get('author'), createdAt=datetime.now, postId=ObjectId(payload.get('postId')), upvoteCount=0, downvoteCount=0)
+   comment = Comment(content=payload.get('content'), author=g.email, createdAt=datetime.now, postId=ObjectId(payload.get('postId')), upvoteCount=0, downvoteCount=0)
    if 'replyToCommentId' in payload:
       comment.replyToCommentId = ObjectId(payload.get('replyToCommentId'))
    comment.save()
@@ -155,25 +157,31 @@ def create_comment():
 @app.put('/comments/<id>')
 @token_required
 def update_comment(id):
-   comment = Comment.objects.get(id=ObjectId(id))
-   if not comment:
-      return 'comment not found', 404
+   try:
+      comment = Comment.objects.get(id=ObjectId(id), author=g.email)
+      if not comment:
+         return jsonify({'message': 'Comment not found'}), 404
+      payload = request.get_json()
+      comment.content = payload.get('content')
+      comment.updatedAt = datetime.now
+      comment.save()
+      return transform_comment_json(comment), 200
+   except DoesNotExist:
+      return jsonify({'message': 'Comment not found'}), 404
+   except Exception as e:
+      return jsonify({'message': str(e) }), 500
    
-   payload = request.get_json()
-   comment.content = payload.get('content')
-   comment.updatedAt = datetime.now
-   comment.save()
-   return transform_comment_json(comment), 200
+   
 
 @app.delete('/comments/<id>')
 @token_required
 def delete_comment(id):
-   comment = Comment.objects.get(id=ObjectId(id))
+   comment = Comment.objects.get(id=ObjectId(id), author=g.email)
    if not comment:
-      return 'comment not found', 404
+      return jsonify({'message': 'Comment not found'}), 404
    
    comment.delete()
-   return 'comment deleted', 204
+   return jsonify({'message': 'comment deleted'}), 204
 
 if __name__ == "__main__":
    app.run(port=5000)
