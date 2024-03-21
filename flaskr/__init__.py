@@ -25,13 +25,19 @@ def token_required(f):
     def decorated(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            bearer, jwt_token = auth_header.split(' ')
-            try:
-                verify_jwt(jwt_token, secret=JWT_SECRET)
-            except jwt.ExpiredSignatureError:
-                return jsonify({'message': 'Token expired'}), 401
-            except jwt.InvalidTokenError:
-                return jsonify({'message': 'Invalid token'}), 401
+            parts = auth_header.split(' ')
+            if len(parts) == 2 and parts[0].lower() == 'bearer':
+               _, jwt_token = auth_header.split(' ')
+               try:
+                  verify_jwt(jwt_token, secret=JWT_SECRET)
+               except jwt.ExpiredSignatureError:
+                  return jsonify({'message': 'Token expired'}), 401
+               except jwt.InvalidTokenError:
+                  return jsonify({'message': 'Invalid token'}), 401
+               except Exception as e:
+                  return jsonify({'message': 'An unexpected error occurred: {}'.format(str(e))}), 500
+            else:
+               return jsonify({'message': 'Invalid auth header'}), 401
         else:
             return jsonify({'message': 'No auth header provided'}), 401
         return f(*args, **kwargs)
