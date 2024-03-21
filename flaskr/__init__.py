@@ -7,50 +7,18 @@ import jwt
 from bson import ObjectId
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
-from mongoengine import (DateField, Document, IntField, ObjectIdField,
-                         StringField, connect)
+from mongoengine import connect
+
+from flaskr.db import Comment, Post, User
+from flaskr.utils.jwt import gen_jwt, verify_jwt
 
 load_dotenv()
-
 
 app = Flask(__name__)
 
 connect(host=os.environ.get('MONGODB_URI'))
 
-class User(Document):
-   username = StringField(required=True)
-   password = StringField(required=True)
-   email = StringField(required=True)
-   createdAt = DateField(required=True)
-   updatedAt = DateField(required=False)
-
-class Post(Document):
-   content = StringField(required=True)
-   author = StringField(required=True)
-   createdAt = DateField(required=True)
-   updatedAt = DateField(required=False)
-
-class Comment(Document):
-   content = StringField(required=True)
-   author = StringField(required=True)
-   createdAt = DateField(required=True)
-   updatedAt = DateField(required=False)
-   replyToCommentId = ObjectIdField(required=False)
-   upvoteCount = IntField(required=True)
-   downvoteCount = IntField(required=True)
-   postId = ObjectIdField(required=True)
-
-
 JWT_SECRET = os.environ.get('JWT_SECRET')
-
-def gen_jwt(user_id):
-   payload = {
-      'user_id': user_id,
-      'exp': datetime.now(timezone.utc) + timedelta(days=1)
-   }
-   jwt_token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
-   return jwt_token
-
 
 def token_required(f):
     @wraps(f)
@@ -59,7 +27,7 @@ def token_required(f):
         if auth_header:
             bearer, jwt_token = auth_header.split(' ')
             try:
-                jwt.decode(jwt_token, JWT_SECRET, algorithms=['HS256'])  # Replace 'secret' with your secret key
+                verify_jwt(jwt_token, secret=JWT_SECRET)
             except jwt.ExpiredSignatureError:
                 return jsonify({'message': 'Token expired'}), 401
             except jwt.InvalidTokenError:
@@ -91,7 +59,7 @@ def sign_in():
    return {
       'username': user.username,
       'email': user.email,
-      'token': gen_jwt(str(user.id))
+      'token': gen_jwt(str(user.id), secret=JWT_SECRET)
    }, 200
 
 def transform_post_json(obj):
