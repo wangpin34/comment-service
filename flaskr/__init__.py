@@ -100,18 +100,23 @@ def create_post():
 def get_post(id):
    post = Post.objects.get(id=ObjectId(id))
    if not post:
-      return 'post not found', 404
+      return jsonify({ 'message': 'post not found'}), 404
    return transform_post_json(post), 200
 
 @app.put('/posts/<id>')
 @token_required
 def update_post(id):
-   post = Post.objects.get(id=ObjectId(id), author=g.email)
-   if not post:
-      return 'post not found', 404
-   payload = request.get_json()
-   post.content = payload.get('content')
-   return transform_post_json(post), 200
+   try:
+      post = Post.objects.get(id=ObjectId(id), author=g.email)
+      if not post:
+         return 'post not found', 404
+      payload = request.get_json()
+      post.content = payload.get('content')
+      return transform_post_json(post), 200
+   except DoesNotExist:
+      return jsonify({ 'message': 'Post not found'}), 404
+   except Exception as e:
+      return jsonify({'message': str(e)}), 500
 
 @app.delete('/posts/<id>')
 @token_required
