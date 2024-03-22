@@ -7,7 +7,7 @@ import jwt
 from bson import ObjectId
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, request
-from mongoengine import DoesNotExist, connect
+from mongoengine import DoesNotExist, NotUniqueError, connect
 
 from flaskr.db import Comment, Post, User
 from flaskr.utils.jwt import gen_jwt, verify_jwt
@@ -57,6 +57,18 @@ def ping():
 @app.get('/health')
 def health():
    return 'ok'
+
+@app.post('/sign-up')
+def sign_up():
+   try:
+      payload = request.get_json()
+      user = User(username=payload.get('username'), email=payload.get('email'), password=payload.get('password'), createdAt=datetime.now)
+      user.save()
+      return jsonify({'message': 'User signed up successfully'}), 201
+   except NotUniqueError:
+      return jsonify({'message': 'User already exists'}), 409
+   except Exception as e:
+      return jsonify({'message': str(e)}), 500
 
 @app.post('/sign-in')
 def sign_in():

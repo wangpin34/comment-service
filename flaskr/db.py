@@ -1,14 +1,11 @@
-from bson import ObjectId
-from dotenv import load_dotenv
-from flask import Flask, jsonify, request
 from mongoengine import (DateField, Document, IntField, ObjectIdField,
-                         StringField, connect)
+                         StringField)
 
 
 class User(Document):
    username = StringField(required=True)
-   password = StringField(required=True)
-   email = StringField(required=True)
+   password = StringField(required=True, min_length=2)
+   email = StringField(required=True, unique=True)
    createdAt = DateField(required=True)
    updatedAt = DateField(required=False)
 
